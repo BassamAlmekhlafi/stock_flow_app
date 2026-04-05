@@ -1,0 +1,6 @@
+# Treat image files as binary to prevent corruption on Windows
+*.jpg binary
+*.png binary
+*.jpeg binary
+*.gif binary
+*.ico binary
