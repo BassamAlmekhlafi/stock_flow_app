@@ -1,4 +1,4 @@
-package com.example.stock_flow_app
+package com.bassam.makhzoni
 
 import io.flutter.embedding.android.FlutterFragmentActivity
 
