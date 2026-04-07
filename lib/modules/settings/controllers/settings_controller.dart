@@ -1,15 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../data/interfaces/auth_repository_interface.dart';
+import '../../../data/interfaces/item_repository_interface.dart';
+import '../../../data/models/item_model.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/services/backup_service.dart';
+import '../../../core/services/excel_service.dart';
 import '../../home/controllers/home_controller.dart';
 
 class SettingsController extends GetxController {
   final IAuthRepository authRepo;
+  final IItemRepository itemRepo;
   late final BackupService backupService;
+  late final ExcelService excelService;
 
-  SettingsController({required this.authRepo});
+  SettingsController({required this.authRepo, required this.itemRepo});
 
   var isAppLocked = false.obs;
   var isFingerprintEnabled = false.obs;
@@ -19,6 +24,7 @@ class SettingsController extends GetxController {
   void onInit() {
     super.onInit();
     backupService = Get.put(BackupService());
+    excelService = Get.put(ExcelService());
     loadSettings();
   }
 
@@ -100,6 +106,183 @@ class SettingsController extends GetxController {
       Get.snackbar('خطأ', 'تعذرت الاستعادة. تأكد من صحة الملف المختار.',
           backgroundColor: AppColors.stockRed, colorText: Colors.white, snackPosition: SnackPosition.BOTTOM);
     }
+  }
+
+  // --------------- Excel ---------------
+
+  Future<void> exportExcel() async {
+    // جلب الأصناف أولاً
+    Get.dialog(
+      const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      barrierDismissible: false,
+    );
+    final allItems = await itemRepo.getItems();
+    Get.back();
+
+    if (allItems.isEmpty) {
+      Get.snackbar('تنبيه', 'لا توجد أصناف لتصديرها.',
+          backgroundColor: AppColors.storeYellow, colorText: AppColors.textDark, snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    // حساب الأصناف قريبة الانتهاء
+    final nearExpiry = Get.isRegistered<HomeController>()
+        ? Get.find<HomeController>().nearExpiryItems
+        : <dynamic>[];
+
+    // حوار اختيار نوع التقرير
+    final choice = await Get.dialog<String>(
+      AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        titlePadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+        title: const Center(
+          child: Text('اختر نوع التصدير', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text('اختر نوع الملف الذي ترغب في تصديره',
+                  style: TextStyle(fontSize: 13, color: AppColors.textGrey), textAlign: TextAlign.center),
+              const SizedBox(height: 16),
+              _ExportOptionWidget(
+                icon: Icons.inventory_2_outlined,
+                title: 'المخزون الشامل',
+                subtitle: 'جميع الأصناف مع كل التفاصيل',
+                color: AppColors.displayBlue,
+                value: 'standard',
+              ),
+              const SizedBox(height: 10),
+              _ExportOptionWidget(
+                icon: Icons.warning_amber_rounded,
+                title: 'قريبة الانتهاء',
+                subtitle: 'الأصناف التي تحتاج متابعة',
+                color: AppColors.stockRed,
+                value: 'near_expiry',
+              ),
+              const SizedBox(height: 10),
+              _ExportOptionWidget(
+                icon: Icons.balance_outlined,
+                title: 'تقرير التسوية الشامل',
+                subtitle: 'الفروقات بين الفعلي والنظام لجميع الأصناف',
+                color: AppColors.storeYellow,
+                value: 'settlement',
+              ),
+              const SizedBox(height: 10),
+              _ExportOptionWidget(
+                icon: Icons.trending_down_rounded,
+                title: 'عجز التسوية',
+                subtitle: 'الأصناف التي بها نقص عن النظام',
+                color: Colors.orange.shade800,
+                value: 'settlement_deficit',
+              ),
+              const SizedBox(height: 10),
+              _ExportOptionWidget(
+                icon: Icons.trending_up_rounded,
+                title: 'زيادة التسوية',
+                subtitle: 'الأصناف التي بها زيادة عن النظام',
+                color: AppColors.systemGreen,
+                value: 'settlement_surplus',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          Center(
+            child: TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('إلغاء', style: TextStyle(color: AppColors.textGrey, fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (choice == null) return;
+
+    List<ItemModel> itemsToExport = allItems;
+    if (choice == 'near_expiry') {
+      itemsToExport = nearExpiry.cast<ItemModel>();
+    } else if (choice == 'settlement_deficit') {
+      itemsToExport = Get.isRegistered<HomeController>() ? Get.find<HomeController>().deficitItems : allItems;
+    } else if (choice == 'settlement_surplus') {
+      itemsToExport = Get.isRegistered<HomeController>() ? Get.find<HomeController>().surplusItems : allItems;
+    }
+
+    if (itemsToExport.isEmpty) {
+      Get.snackbar('تنبيه', 'لا توجد أصناف في هذا التقرير.',
+          backgroundColor: AppColors.storeYellow, colorText: AppColors.textDark, snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    final success = await excelService.exportToExcel(itemsToExport, reportType: choice);
+    if (success) {
+      Get.snackbar('تصدير Excel', 'تم تصدير التقرير بنجاح.',
+          backgroundColor: AppColors.systemGreen, colorText: Colors.white, snackPosition: SnackPosition.BOTTOM);
+    }
+  }
+
+  Future<void> importExcel() async {
+    // تأكيد قبل الاستيراد
+    final confirmed = await Get.dialog<bool>(
+      AlertDialog(
+        backgroundColor: Colors.white,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Center(
+          child: Text('تأكيد الاستيراد', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+        ),
+        content: const Text(
+          'سيتم دمج بيانات الملف مع المخزون الحالي.\nالأصناف الموجودة بنفس الاسم ستُحدَّث، والجديدة ستُضاف.',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 13, color: AppColors.textGrey),
+        ),
+        actionsAlignment: MainAxisAlignment.center,
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(result: false),
+            child: const Text('إلغاء', style: TextStyle(color: AppColors.textGrey, fontWeight: FontWeight.bold)),
+          ),
+          ElevatedButton(
+            onPressed: () => Get.back(result: true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10))),
+            child: const Text('استيراد', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    final importedItems = await excelService.importFromExcel();
+
+    if (importedItems == null) {
+      Get.snackbar('إلغاء', 'لم يتم اختيار ملف.',
+          backgroundColor: AppColors.storeYellow, colorText: AppColors.textDark, snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    if (importedItems.isEmpty) {
+      Get.snackbar('تنبيه', 'الملف لا يحتوي على بيانات صالحة.',
+          backgroundColor: AppColors.storeYellow, colorText: AppColors.textDark, snackPosition: SnackPosition.BOTTOM);
+      return;
+    }
+
+    Get.dialog(
+      const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      barrierDismissible: false,
+    );
+
+    await itemRepo.upsertItems(importedItems);
+    Get.back();
+
+    if (Get.isRegistered<HomeController>()) {
+      Get.find<HomeController>().loadItems();
+    }
+
+    Get.snackbar('استيراد Excel', 'تم استيراد ${importedItems.length} صنف بنجاح ✅',
+        backgroundColor: AppColors.systemGreen, colorText: Colors.white, snackPosition: SnackPosition.BOTTOM);
   }
 
   void _showSetPasswordDialog() {
@@ -225,6 +408,77 @@ class SettingsController extends GetxController {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+// تم فصل هذا العنصر إلى كلاس مستقل (StatelessWidget) لتجاوز مشكلة (Cache) في Hot Reload 
+// ولضمان تطبيق الكود الجديد فورياً واختفاء الخطوط الرسومية تماماً
+class _ExportOptionWidget extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Color color;
+  final String value;
+
+  const _ExportOptionWidget({
+    Key? key,
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.color,
+    required this.value,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(13),
+          // الإطار هنا منفصل كلياً ولن يسبب تداخل Skia
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
+        ),
+        child: Material(
+          color: color.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: () => Get.back(result: value),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title, 
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14, decoration: TextDecoration.none)),
+                        const SizedBox(height: 2),
+                        Text(subtitle, 
+                            style: const TextStyle(fontSize: 11, color: AppColors.textGrey, decoration: TextDecoration.none)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.chevron_left_rounded, size: 24, color: color.withOpacity(0.5)),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

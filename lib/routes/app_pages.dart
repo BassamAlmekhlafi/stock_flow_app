@@ -29,7 +29,10 @@ class AppPages {
       name: AppRoutes.SETTINGS,
       page: () => const SettingsView(),
       binding: BindingsBuilder(() {
-        Get.lazyPut<SettingsController>(() => SettingsController(authRepo: Get.find<IAuthRepository>()));
+        Get.lazyPut<SettingsController>(() => SettingsController(
+          authRepo: Get.find<IAuthRepository>(),
+          itemRepo: Get.find<IItemRepository>(),
+        ));
       }),
     ),
   ];

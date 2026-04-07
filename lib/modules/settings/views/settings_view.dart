@@ -124,6 +124,27 @@ class SettingsView extends GetView<SettingsController> {
                     ),
                   ]),
                   
+                   const SizedBox(height: 32),
+                  _buildSectionTitle('استيراد وتصدير Excel'),
+                  const SizedBox(height: 12),
+                  _buildSettingsGroup([
+                    _buildSettingsTile(
+                      title: 'تصدير إلى Excel',
+                      subtitle: 'حفظ جميع الأصناف كملف Excel (.xlsx)',
+                      icon: Icons.upload_file_rounded,
+                      iconColor: const Color(0xFF1B7E49),
+                      onTap: controller.exportExcel,
+                    ),
+                    const Divider(height: 1, indent: 50),
+                    _buildSettingsTile(
+                      title: 'استيراد من Excel',
+                      subtitle: 'دمج بيانات ملف Excel مع المخزون الحالي',
+                      icon: Icons.download_for_offline_rounded,
+                      iconColor: const Color(0xFF1565C0),
+                      onTap: controller.importExcel,
+                    ),
+                  ]),
+
                   const SizedBox(height: 32),
                   _buildSectionTitle('حول التطبيق'),
                   const SizedBox(height: 12),

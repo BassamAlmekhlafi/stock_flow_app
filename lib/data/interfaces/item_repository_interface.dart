@@ -6,4 +6,5 @@ abstract class IItemRepository {
   Future<void> insertItem(ItemModel item);
   Future<void> updateItem(ItemModel item);
   Future<void> deleteItem(int id);
+  Future<void> upsertItems(List<ItemModel> items); // دمج الاستيراد
 }

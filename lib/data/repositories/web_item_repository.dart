@@ -33,4 +33,18 @@ class WebItemRepository implements IItemRepository {
   Future<void> deleteItem(int id) async {
     _items.removeWhere((e) => e.id == id);
   }
+
+  @override
+  Future<void> upsertItems(List<ItemModel> items) async {
+    for (final item in items) {
+      final index = _items.indexWhere((e) => e.name == item.name);
+      if (index != -1) {
+        item.id = _items[index].id;
+        _items[index] = item;
+      } else {
+        item.id = _currentId++;
+        _items.add(item);
+      }
+    }
+  }
 }

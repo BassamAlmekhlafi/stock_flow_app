@@ -99,7 +99,7 @@ class HomeView extends GetView<HomeController> {
         children: [
           _buildStatCard('إجمالي الأصناف', controller.totalItemsCount.toString(), Icons.inventory_2, AppColors.displayBlue, filterKey: 'all'),
           _buildStatCard('قريب الانتهاء', controller.nearExpiryCount.toString(), Icons.warning_amber_rounded, AppColors.stockRed, filterKey: 'near_expiry'),
-          _buildStatCard('إجمالي النظام', controller.totalSystemQuantity.toString(), Icons.analytics_outlined, AppColors.systemGreen, isStatic: true),
+          _buildStatCard('أصناف بها عجز', controller.deficitItemsCount.toString(), Icons.trending_down_rounded, Colors.orange.shade800, filterKey: 'deficit'),
         ],
       )),
     );
@@ -175,6 +175,16 @@ class HomeView extends GetView<HomeController> {
       statusText = 'قريب الإنتهاء';
     }
 
+    final storesTotal = item.storeQuantity + item.displayQuantity;
+    final settlement = storesTotal - item.systemQuantity;
+    
+    Color settlementColor = AppColors.textGrey;
+    if (settlement > 0) {
+      settlementColor = const Color(0xFF1B5E20); // Dark Green
+    } else if (settlement < 0) {
+      settlementColor = const Color(0xFFB71C1C); // Dark Red
+    }
+
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       elevation: 0,
@@ -195,28 +205,30 @@ class HomeView extends GetView<HomeController> {
                     style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.textDark),
                   ),
                 ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: statusColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
+                if (statusText != 'سليم')
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      statusText,
+                      style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
+                    ),
                   ),
-                  child: Text(
-                    statusText,
-                    style: TextStyle(color: statusColor, fontSize: 10, fontWeight: FontWeight.bold),
-                  ),
-                ),
                 const SizedBox(width: 8),
                 _buildItemActions(context, item),
               ],
             ),
-            const Divider(height: 20),
+            const Divider(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                _buildQtyBadge('المخزن', item.storeQuantity, AppColors.storeYellow, Icons.store),
+                _buildQtyBadge('المخازن', item.storeQuantity, AppColors.storeYellow, Icons.store),
                 _buildQtyBadge('العرض', item.displayQuantity, AppColors.displayBlue, Icons.visibility),
                 _buildQtyBadge('النظام', item.systemQuantity, AppColors.systemGreen, Icons.computer),
+                _buildQtyBadge('التسوية', settlement, settlementColor, Icons.balance_outlined, isSettlement: true),
               ],
             ),
             const SizedBox(height: 12),
@@ -236,7 +248,10 @@ class HomeView extends GetView<HomeController> {
     );
   }
 
-  Widget _buildQtyBadge(String label, int value, Color color, IconData icon) {
+  Widget _buildQtyBadge(String label, int value, Color color, IconData icon, {bool isSettlement = false}) {
+    String displayValue = value.toString();
+    if (isSettlement && value > 0) displayValue = '+$value';
+
     return Column(
       children: [
         Row(
@@ -248,8 +263,8 @@ class HomeView extends GetView<HomeController> {
         ),
         const SizedBox(height: 4),
         Text(
-          value.toString(),
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: color),
+          displayValue,
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
         ),
       ],
     );
@@ -326,6 +341,7 @@ class HomeView extends GetView<HomeController> {
     final nameController = TextEditingController(text: item?.name ?? '');
     final storeController = TextEditingController(text: item?.storeQuantity.toString() ?? '');
     final displayController = TextEditingController(text: item?.displayQuantity.toString() ?? '');
+    final systemController = TextEditingController(text: item?.systemQuantity.toString() ?? '');
     DateTime selectedDate = item?.expiryDate ?? DateTime.now();
 
     Get.bottomSheet(
@@ -357,6 +373,7 @@ class HomeView extends GetView<HomeController> {
                   const SizedBox(height: 24),
                   TextField(
                     controller: nameController,
+                    textInputAction: TextInputAction.next,
                     decoration: InputDecoration(
                       labelText: 'اسم الصنف', 
                       prefixIcon: const Icon(Icons.label_important_outline),
@@ -371,6 +388,7 @@ class HomeView extends GetView<HomeController> {
                         child: TextField(
                           controller: storeController,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'المخازن', 
                             prefixIcon: const Icon(Icons.store_mall_directory_outlined),
@@ -384,6 +402,7 @@ class HomeView extends GetView<HomeController> {
                         child: TextField(
                           controller: displayController,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.next,
                           decoration: InputDecoration(
                             labelText: 'العرض', 
                             prefixIcon: const Icon(Icons.grid_view_rounded),
@@ -393,6 +412,18 @@ class HomeView extends GetView<HomeController> {
                         ),
                       ),
                     ],
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: systemController,
+                    keyboardType: TextInputType.number,
+                    textInputAction: TextInputAction.next,
+                    decoration: InputDecoration(
+                      labelText: 'النظام', 
+                      prefixIcon: const Icon(Icons.computer),
+                      filled: true,
+                      fillColor: Colors.grey.shade50,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   TextFormField(
@@ -432,17 +463,18 @@ class HomeView extends GetView<HomeController> {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     ),
                     onPressed: () {
-                      if (nameController.text.isEmpty || storeController.text.isEmpty || displayController.text.isEmpty) {
-                        Get.snackbar('تحذير', 'الرجاء تعبئة جميع الحقول', 
+                      if (nameController.text.trim().isEmpty) {
+                        Get.snackbar('تحذير', 'الرجاء إدخال اسم الصنف', 
                           backgroundColor: AppColors.stockRed, colorText: Colors.white, snackPosition: SnackPosition.TOP);
                         return;
                       }
 
                       final newItem = ItemModel(
                         id: item?.id,
-                        name: nameController.text,
-                        storeQuantity: int.parse(storeController.text),
-                        displayQuantity: int.parse(displayController.text),
+                        name: nameController.text.trim(),
+                        storeQuantity: int.tryParse(storeController.text) ?? 0,
+                        displayQuantity: int.tryParse(displayController.text) ?? 0,
+                        systemQuantity: int.tryParse(systemController.text) ?? 0,
                         expiryDate: selectedDate,
                       );
 
@@ -480,42 +512,80 @@ class HomeView extends GetView<HomeController> {
             style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary),
           ),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'اختر نوع التقرير الذي ترغب في استخراجه',
-              style: TextStyle(fontSize: 13, color: AppColors.textGrey),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            _buildPrintOption(
-              context,
-              title: 'طباعة جميع الأصناف',
-              subtitle: 'تقرير شامل لكافة البيانات',
-              icon: Icons.inventory_2_outlined,
-              color: AppColors.displayBlue,
-              onTap: () {
-                Get.back();
-                controller.printPdf();
-              },
-            ),
-            const SizedBox(height: 12),
-            _buildPrintOption(
-              context,
-              title: 'أصناف قريبة الانتهاء',
-              subtitle: 'تقرير خاص بالتحذيرات والتنبيهات',
-              icon: Icons.warning_amber_rounded,
-              color: AppColors.stockRed,
-              onTap: () {
-                Get.back();
-                controller.printPdf(
-                  itemsToPrint: controller.nearExpiryItems,
-                  title: 'تقرير الأصناف قريبة الانتهاء',
-                );
-              },
-            ),
-          ],
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'اختر نوع التقرير الذي ترغب في استخراجه',
+                style: TextStyle(fontSize: 13, color: AppColors.textGrey),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 20),
+              _buildPrintOption(
+                context,
+                title: 'طباعة جميع الأصناف',
+                subtitle: 'تقرير شامل لكافة البيانات',
+                icon: Icons.inventory_2_outlined,
+                color: AppColors.displayBlue,
+                onTap: () {
+                  Get.back();
+                  controller.printPdf();
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPrintOption(
+                context,
+                title: 'أصناف قريبة الانتهاء',
+                subtitle: 'تقرير خاص بالتحذيرات والتنبيهات',
+                icon: Icons.warning_amber_rounded,
+                color: AppColors.stockRed,
+                onTap: () {
+                  Get.back();
+                  controller.printPdf(
+                    itemsToPrint: controller.nearExpiryItems,
+                    title: 'تقرير الأصناف قريبة الانتهاء',
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPrintOption(
+                context,
+                title: 'تقرير التسوية الشامل',
+                subtitle: 'جميع الأصناف وفروقات الجرد',
+                icon: Icons.balance_outlined,
+                color: AppColors.storeYellow,
+                onTap: () {
+                  Get.back();
+                  controller.printPdf(reportType: 'settlement', title: 'تقرير التسوية الشامل');
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPrintOption(
+                context,
+                title: 'تقرير عجز التسوية',
+                subtitle: 'الأصناف التي بها نقص عن النظام',
+                icon: Icons.trending_down_rounded,
+                color: Colors.orange.shade800,
+                onTap: () {
+                  Get.back();
+                  controller.printPdf(itemsToPrint: controller.deficitItems, reportType: 'settlement', title: 'تقرير عجز التسوية');
+                },
+              ),
+              const SizedBox(height: 12),
+              _buildPrintOption(
+                context,
+                title: 'تقرير زيادة التسوية',
+                subtitle: 'الأصناف التي بها زيادة عن النظام',
+                icon: Icons.trending_up_rounded,
+                color: AppColors.systemGreen,
+                onTap: () {
+                  Get.back();
+                  controller.printPdf(itemsToPrint: controller.surplusItems, reportType: 'settlement', title: 'تقرير زيادة الفائض (التسوية)');
+                },
+              ),
+            ],
+          ),
         ),
         actions: [
           TextButton(
@@ -537,52 +607,52 @@ class HomeView extends GetView<HomeController> {
     required Color color,
     required VoidCallback onTap,
   }) {
-    return InputDecorator(
-      decoration: InputDecoration(
-        contentPadding: EdgeInsets.zero,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(color: color.withOpacity(0.2)),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(13),
+          border: Border.all(color: color.withOpacity(0.3), width: 1),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(15),
-          borderSide: BorderSide(color: color.withOpacity(0.2)),
-        ),
-        filled: true,
-        fillColor: color.withOpacity(0.03),
-      ),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(15),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: color.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Icon(icon, color: color, size: 24),
+        child: Material(
+          color: color.withOpacity(0.04),
+          borderRadius: BorderRadius.circular(12),
+          clipBehavior: Clip.antiAlias,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: color.withOpacity(0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(icon, color: color, size: 24),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(title,
+                            style: const TextStyle(
+                                fontWeight: FontWeight.bold, fontSize: 14, decoration: TextDecoration.none)),
+                        const SizedBox(height: 2),
+                        Text(subtitle,
+                            style: const TextStyle(
+                                fontSize: 11, color: AppColors.textGrey, decoration: TextDecoration.none)),
+                      ],
+                    ),
+                  ),
+                  Icon(Icons.arrow_forward_ios_rounded,
+                      size: 14, color: color.withOpacity(0.5)),
+                ],
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(title,
-                        style: const TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14)),
-                    Text(subtitle,
-                        style: const TextStyle(
-                            fontSize: 11, color: AppColors.textGrey)),
-                  ],
-                ),
-              ),
-              Icon(Icons.arrow_forward_ios_rounded,
-                  size: 14, color: color.withOpacity(0.5)),
-            ],
+            ),
           ),
         ),
       ),

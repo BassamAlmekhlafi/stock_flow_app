@@ -4,8 +4,7 @@ class ItemModel {
   int storeQuantity; // المخازن
   int displayQuantity; // العرض
   
-  // النظام = العرض + المخازن (محسوب تلقائياً)
-  int get systemQuantity => storeQuantity + displayQuantity;
+  int systemQuantity; // النظام (إدخال يدوي)
   
   DateTime expiryDate;
 
@@ -14,6 +13,7 @@ class ItemModel {
     required this.name,
     required this.storeQuantity,
     required this.displayQuantity,
+    required this.systemQuantity,
     required this.expiryDate,
   });
 
@@ -23,6 +23,7 @@ class ItemModel {
       'name': name,
       'storeQuantity': storeQuantity,
       'displayQuantity': displayQuantity,
+      'systemQuantity': systemQuantity,
       'expiryDate': expiryDate.toIso8601String(),
     };
   }
@@ -33,6 +34,7 @@ class ItemModel {
       name: map['name'] as String,
       storeQuantity: map['storeQuantity'] as int,
       displayQuantity: map['displayQuantity'] as int,
+      systemQuantity: map['systemQuantity'] as int? ?? 0, // Fallback for old data
       expiryDate: DateTime.parse(map['expiryDate'] as String),
     );
   }
